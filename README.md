@@ -1,5 +1,6 @@
-# What is it? Nextcloud all-in-one package with Docker-Compose
-
+# What it is? Nextcloud cloud-native all-in-one package with Docker-Compose
+	BitBucket: https://bitbucket.org/erikbarz/nextclouddockercomposegrafana/src/master
+	GitHub: https://github.com/erikbarz/NextcloudDockerComposeGrafana
 
 #### Background:
 I am running an Nextcloud-Server since 2016 now. While my masters exam in 2020 I migrated the setup to a cloud-native technology stack.
@@ -17,6 +18,17 @@ Nextcloud itself offers several examples for docker-compose setups. But anyhow I
 
 Link to Original example on Github Account nextcloud/docker:
     https://github.com/nextcloud/docker/tree/master/.examples/docker-compose/insecure/mariadb-cron-redis/apache/
+
+## Content
+- Technologie-Stack 
+	- Nextcloud-stack: Overview of Containers / Services / Images inkl. Links:
+	- Monitoring-stack: Overview of Containers / Services / Images inkl. Links:
+- Infrastructure-diagrams
+	- containers, volumes, networks and mounts:
+	- networking in detail:
+- Monitoring and logging screenshots from grafana
+- How to / Step-by-Step manual: prepare the system (ubuntu, docker, compose) and run nextcloud containerized
+- How to: Establish enhanced Monitoring and logging
 
 ## Technologie-Stack 
 
@@ -50,19 +62,35 @@ Link to Original example on Github Account nextcloud/docker:
 * Grafana-Loki log collector
     https://hub.docker.com/r/grafana/loki
 
-#### Infrastructure-diagrams
 
-	containers, volumes, networks and mounts:
+## Infrastructure-diagrams
 
-
+#### containers, volumes, networks and mounts:
 ![setup-overview_v1.0.png](setup-overview_v1.0.png)
  
-
-networking in detail:
-
+#### networking in detail:
 ![networking-overview_v1.0.png](networking-overview_v1.0.png)
 
-# Step-by-Step manual / tutorial for initial setup
+
+## Monitoring and logging screenshots from grafana
+
+#### docker and system statistics
+![grafana-docker.png](grafana-docker.png)
+
+#### maria db statistics
+![grafana-mariadb.jpg](grafana-mariadb.jpg)
+
+#### traefik statistics
+![grafana-traefik.png](grafana-traefik.png)
+
+#### redis statistics
+![grafana-redis.jpg](grafana-redis.jpg)
+
+#### loki logviewer
+![Loki-Logging.jpg](Loki-Logging.jpg)
+
+
+# How to / Step-by-Step manual: prepare the system (ubuntu, docker, compose) and run nextcloud containerized
 
 #### install ubuntu
     - download 20.04.01
@@ -206,8 +234,9 @@ if already existing and only migrating to a new host -> recover var and opt fold
 
 # WIKI
 	in the Wiki section you can find many useful commands for maintenance -> how to start, stop, update etc.
+	https://bitbucket.org/erikbarz/nextclouddockercomposegrafana/wiki/Home
 	
-# Establish enhanced Monitoring and logging
+# How to: Establish enhanced Monitoring and logging
 
 #### Prometheus check
 	call URL in browser https://hostname_internal:9091 or http://hostname_internal:9090
