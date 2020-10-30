@@ -1,0 +1,168 @@
+version: '3'
+
+# Nextcloud Stack with MariaDB, Redis, Nextcloud, Cron and Traefik
+# for manuals see following links:
+# https://goneuland.de/nextcloud-server-mit-docker-compose-und-traefik-installieren/#6_3_Nextcloud_komplett_auf_HTTPs_umstellen
+
+# IMPORTANT: env-file must be maintained before with credentials and hostnames 
+
+services:
+ 
+  db:
+    image: mariadb:10.3.22 # see image descriptions on docker hub -> https://hub.docker.com/_/mariadb
+    command: --transaction-isolation=READ-COMMITTED --binlog-format=ROW
+    restart: on-failure
+    container_name: mariadb
+    volumes:
+      - db:/var/lib/mysql
+    environment:
+      - MYSQL_DATABASE=nextcloud
+      - MYSQL_USER=nextcloud
+      - MYSQL_ROOT_PASSWORD=${db_root_pw}
+      - MYSQL_PASSWORD=${db_user_pw}
+    networks:
+      - backend
+    ports:
+      - 3306:3306
+    logging:
+      driver: loki
+      options:
+        loki-url: http://localhost:3100/loki/api/v1/push
+
+
+  redis:
+    image: redis:alpine # see image descriptions on docker hub -> https://hub.docker.com/_/redis
+    restart: on-failure
+    command: redis-server --requirepass ${redis_root_pw}
+    container_name: redis-cache
+    volumes:
+      - redis:/data
+    ports:
+      - 6379:6379
+    networks:
+      - backend
+    logging:
+      driver: loki
+      options:
+        loki-url: http://localhost:3100/loki/api/v1/push
+
+  
+  app:
+    image: nextcloud:${nextcloud_version_tag} # see image descriptions on docker hub -> https://hub.docker.com/_/nextcloud/
+    restart: on-failure
+    container_name: nextcloud-apache-webserver
+    volumes:
+      - nextcloud:/var/www/html
+    environment:
+      - VIRTUAL_HOST=${hostname_external}
+      - LETSENCRYPT_HOST=${hostname_external}
+      - LETSENCRYPT_EMAIL=${ssl_certificate_mail}
+      - REDIS_HOST=redis
+      - REDIS_HOST_PASSWORD=${redis_root_pw}  # IMPORTANT must also be set in nextcloud config.php
+      - MYSQL_HOST=db
+      - MYSQL_DATABASE=nextcloud
+      - MYSQL_USER=nextcloud
+      - MYSQL_ROOT_PASSWORD=${db_root_pw}
+      - MYSQL_PASSWORD=${db_user_pw}
+    depends_on:
+      - db
+      - redis
+      - traefik
+    networks:
+      - nextcloud_proxy
+      - backend
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.nextcloud-app.entrypoints=http"
+      - "traefik.http.routers.nextcloud-app.rule=Host(`${hostname_external}`) || Host(`${hostname_internal}`)" 
+      - "traefik.http.middlewares.nextcloud-app-https-redirect.redirectscheme.scheme=https"
+      - "traefik.http.routers.nextcloud-app.middlewares=nextcloud-app-https-redirect"
+      - "traefik.http.routers.nextcloud-app-secure.entrypoints=https"
+      - "traefik.http.routers.nextcloud-app-secure.rule=Host(`${hostname_external}`) || Host(`${hostname_internal}`)"
+      - "traefik.http.routers.nextcloud-app-secure.tls=true"
+      - "traefik.http.routers.nextcloud-app-secure.tls.certresolver=http"
+      - "traefik.http.routers.nextcloud-app-secure.service=nextcloud-app"
+      - "traefik.http.services.nextcloud-app.loadbalancer.server.port=80"
+      - "traefik.docker.network=nextcloud_proxy"
+      - "traefik.http.routers.nextcloud-app-secure.middlewares=nextcloud-dav"
+      - "traefik.http.middlewares.nextcloud-dav.replacepathregex.regex=^/.well-known/ca(l|rd)dav"
+      - "traefik.http.middlewares.nextcloud-dav.replacepathregex.replacement=/remote.php/dav/"
+    logging:
+      driver: loki
+      options:
+        loki-url: http://localhost:3100/loki/api/v1/push
+
+
+  cron:
+    image: nextcloud:${nextcloud_version_tag} # see image descriptions on docker hub -> https://hub.docker.com/_/nextcloud/
+    restart: on-failure
+    container_name: cron-scheduler
+    volumes:
+      - nextcloud:/var/www/html
+    entrypoint: /cron.sh
+    depends_on:
+      - db
+      - redis
+    networks:
+      - backend
+    logging:
+      driver: loki
+      options:
+        loki-url: http://localhost:3100/loki/api/v1/push
+  
+  
+  traefik:
+    command: --web --docker --docker.watch --docker.domain=local
+    image: traefik:latest # see image descriptions on docker hub -> https://hub.docker.com/_/traefik
+    container_name: traefik-proxy
+    restart: on-failure
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - nextcloud_proxy
+    ports:
+      - 80:80     # NC HTTP
+      - 443:443   # NC HTTPS
+      - 8080:8080 # Traefik UI
+      - 3000:3000 # Grafana HTTP
+      - 3001:3001 # Grafana HTTPS
+      - 9000:9000 # Portainer
+      - 9001:9001 # Portainer HTTPS
+      - 9090:9090 # Prometheus
+      - 9091:9091 # Prometheus HTTPS
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./traefik/traefik.yml:/traefik.yml:ro # Email address must be maintained !
+      - ./traefik/acme.json:/acme.json        # File must be created before !
+    labels:
+      - "traefik.enable=true"
+      - "traefik.port=8080"
+      - "traefik.http.routers.traefik.entrypoints=http"
+      - "traefik.http.routers.traefik.rule=Host(`${hostname_external}`)" 
+      - "traefik.http.routers.traefik.middlewares=traefik-https-redirect"
+      - "traefik.http.routers.traefik-secure.entrypoints=https"
+      - "traefik.http.routers.traefik-secure.rule=Host(`${hostname_external}`)"
+      - "traefik.http.routers.traefik-secure.middlewares=traefik-auth"
+      - "traefik.http.routers.traefik-secure.tls=true"
+      - "traefik.http.routers.traefik-secure.tls.certresolver=http"
+      - "traefik.http.routers.traefik-secure.service=api@internal"
+      - "traefik.http.middlewares.traefik-auth.basicauth.users=${traefik_encoded_user_pw}"
+      - "traefik.http.middlewares.traefik-ipwhitelist.ipwhitelist.sourcerange=${traefik_ipwhitelist}"
+      - "traefik.http.middlewares.traefik-https-redirect.redirectscheme.scheme=https"
+    logging:
+      driver: loki
+      options:
+        loki-url: http://localhost:3100/loki/api/v1/push
+
+
+volumes:
+  db:
+  nextcloud:
+  redis:
+
+
+networks:
+  nextcloud_proxy:
+    external: true
+  backend:

@@ -1,0 +1,184 @@
+version: '3'
+
+# Monitoring Stack with Prometheus, Cadvisor, Grafana, Loki and Portainer
+# for manuals see following links:
+# https://teqqy.de/docker-monitoring-mit-prometheus-und-grafana/
+# https://goneuland.de/grafana-mit-docker-compose-und-traefik-installieren/
+
+
+services:
+
+  mon_prometheus:
+    image: prom/prometheus:latest # see image descriptions on docker hub -> https://hub.docker.com/r/prom/prometheus
+    container_name: prometheus-monitoring-db
+    restart: unless-stopped
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus:/prometheus-data
+    depends_on:
+      - mon_node-exporter
+      - mon_cadvisor
+      - mon_db-exporter
+      - mon_redis-exporter
+    networks:
+      - backend
+      - nextcloud_proxy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.prometheus.entrypoints=prometheus"
+      - "traefik.http.routers.prometheus.rule=Host(`${hostname_internal}`)" 
+      - "traefik.http.middlewares.prometheus-https-redirect.redirectscheme.scheme=https"
+      - "traefik.http.middlewares.prometheus-https-redirect.redirectscheme.port=9091"
+      - "traefik.http.routers.prometheus.middlewares=prometheus-https-redirect"
+      - "traefik.http.routers.prometheus-secure.entrypoints=prometheus-secure"
+      - "traefik.http.routers.prometheus-secure.rule=Host(`${hostname_internal}`)" 
+      - "traefik.http.routers.prometheus-secure.tls=true"
+      - "traefik.http.routers.prometheus-secure.tls.certresolver=http"
+      - "traefik.http.routers.prometheus-secure.service=prometheus"
+      - "traefik.http.services.prometheus.loadbalancer.server.port=9090"
+      - "traefik.docker.network=nextcloud_proxy"
+
+
+  mon_node-exporter:
+    image: prom/node-exporter:latest # see image descriptions on docker hub -> https://hub.docker.com/r/prom/node-exporter
+    container_name: prometheus-node-exporter
+    restart: unless-stopped
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.sysfs=/host/sys'
+      - '--path.rootfs=/rootfs'
+      - '--collector.filesystem.ignored-mount-points="^(/rootfs|/host|)/(sys|proc|dev|host|etc)($$|/)"'
+      - '--collector.filesystem.ignored-fs-types="^(sys|proc|auto|cgroup|devpts|ns|au|fuse\.lxc|mqueue)(fs|)$$"'
+    networks:
+      - backend
+
+
+  mon_db-exporter:
+    image: prom/mysqld-exporter:latest # see image descriptions on docker hub -> https://hub.docker.com/r/prom/mysqld-exporter
+    container_name: prometheus-mariadb-exporter
+    environment:
+      - DATA_SOURCE_NAME=exporter:${db_exporter_pw}@(mariadb:3306)/
+    command: 
+      - '--collect.info_schema.tables' 
+      - '--collect.info_schema.tablestats' 
+      - '--collect.info_schema.processlist' 
+      - '--collect.info_schema.innodb_metrics' 
+      - '--collect.info_schema.userstats' 
+      - '--collect.engine_innodb_status'
+    ports:
+      - 9104:9104
+    networks:
+     - backend
+     - nextcloud_backend
+    
+
+  mon_cadvisor:
+    image: google/cadvisor:latest # see image descriptions on docker hub -> https://hub.docker.com/r/google/cadvisor
+    container_name: prometheus-cadvisor-exporter
+    restart: unless-stopped
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:rw
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    networks:
+      - backend
+      
+      
+  mon_redis-exporter:
+    image: oliver006/redis_exporter # see image descriptions on docker hub -> https://hub.docker.com/r/oliver006/redis_exporter
+    container_name: prometheus-redis-exporter
+    command: 
+      - '--redis.addr=redis:6379'
+      - '--redis.password=${redis_root_pw}'
+    restart: unless-stopped
+    ports:
+      - 9121:9121
+    networks:
+      - backend
+      - nextcloud_backend
+
+
+  mon_grafana:
+    build: ./grafana # see image descriptions on docker hub -> https://hub.docker.com/r/grafana/grafana; custom build for extra plugins
+    container_name: grafana-monitoring-dashboards
+    restart: unless-stopped
+    volumes:
+      - grafana:/var/lib/grafana
+    user: "1000"
+    depends_on:
+      - mon_prometheus
+      - loki
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.grafana.entrypoints=grafana"
+      - "traefik.http.routers.grafana.rule=Host(`${hostname_internal}`)" 
+      - "traefik.http.middlewares.grafana-https-redirect.redirectscheme.scheme=https"
+      - "traefik.http.middlewares.grafana-https-redirect.redirectscheme.port=3001"
+      - "traefik.http.routers.grafana.middlewares=grafana-https-redirect"
+      - "traefik.http.routers.grafana-secure.entrypoints=grafana-secure"
+      - "traefik.http.routers.grafana-secure.rule=Host(`${hostname_internal}`)" 
+      - "traefik.http.routers.grafana-secure.tls=true"
+      - "traefik.http.routers.grafana-secure.tls.certresolver=http"
+      - "traefik.http.routers.grafana-secure.service=grafana"
+      - "traefik.http.services.grafana.loadbalancer.server.port=3000"
+      - "traefik.docker.network=nextcloud_proxy"
+    networks:
+      - nextcloud_proxy
+      - backend
+
+
+  loki:
+   image: grafana/loki:latest # see image descriptions on docker hub -> https://hub.docker.com/r/grafana/loki
+   container_name: loki-log-collector
+   volumes:
+     - ./loki/loki.yaml:/etc/config/loki.yaml
+   entrypoint:
+     - /usr/bin/loki
+     - -config.file=/etc/config/loki.yaml
+   ports:
+     - "3100:3100"
+   networks:
+     - backend
+
+
+  portainer:
+    image: portainer/portainer-ce:alpine  # see image descriptions on docker hub -> https://hub.docker.com/r/portainer/portainer-ce
+    restart: on-failure
+    container_name: portainer-container-admin
+    networks:
+      - nextcloud_proxy
+    volumes:
+      - portainer:/data
+      - /var/run/docker.sock:/var/run/docker.sock
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.portainer.entrypoints=portainer"
+      - "traefik.http.routers.portainer.rule=Host(`${hostname_internal}`)"
+      - "traefik.http.middlewares.portainer-https-redirect.redirectscheme.scheme=https"
+      - "traefik.http.middlewares.portainer-https-redirect.redirectscheme.port=9001"
+      - "traefik.http.routers.portainer.middlewares=portainer-https-redirect"
+      - "traefik.http.routers.portainer-secure.entrypoints=portainer-secure"
+      - "traefik.http.routers.portainer-secure.rule=Host(`${hostname_internal}`)"
+      - "traefik.http.routers.portainer-secure.tls=true"
+      - "traefik.http.routers.portainer-secure.tls.certresolver=http"
+      - "traefik.http.routers.portainer-secure.service=portainer"
+      - "traefik.http.services.portainer.loadbalancer.server.port=9000"
+      - "traefik.docker.network=nextcloud_proxy"
+
+
+volumes:
+  grafana:
+  portainer:
+  prometheus:
+
+networks:
+  nextcloud_proxy:
+    external: true
+  nextcloud_backend:
+    external: true
+  backend:

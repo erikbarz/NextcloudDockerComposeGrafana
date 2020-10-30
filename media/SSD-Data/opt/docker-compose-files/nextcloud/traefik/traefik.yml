@@ -1,0 +1,48 @@
+api:
+  dashboard: true
+  insecure: true
+  
+  
+entryPoints:
+  http:
+    address: ":80"
+  https:
+    address: ":443"
+  grafana:
+    address: ":3000"
+  grafana-secure:
+    address: ":3001"
+  portainer:
+    address: ":9000"
+  portainer-secure:
+    address: ":9001"
+  prometheus:
+    address: ":9090"
+  prometheus-secure:
+    address: ":9091"
+    
+    
+providers:
+  docker:
+    endpoint: "unix:///var/run/docker.sock"
+    exposedByDefault: false
+    
+    
+certificatesResolvers:
+  http:
+    acme:
+      email: webmaster@maxmustermann.de
+      storage: acme.json
+      httpChallenge:
+        entryPoint: http
+        
+        
+log:
+  level: DEBUG
+  
+  
+metrics:
+  prometheus: {}
+  
+  
+accessLog: {}
