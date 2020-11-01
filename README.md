@@ -65,11 +65,14 @@ Link to Original example on Github Account nextcloud/docker:
 
 ## Infrastructure-diagrams
 
-#### containers, volumes, networks and mounts:
-![setup-overview_v1.0.png](setup-overview_v1.0.png)
+#### nextcloud-stack - containers, volumes, networks and mounts:
+![nextcloud-stack_v1.2.png](nextcloud-stack_v1.2.png)
+
+#### monitoring-stack - containers, volumes, networks and mounts:
+![monitoring-stack_v1.0.png](monitoring-stack_v1.0.png)
  
 #### networking in detail:
-![networking-overview_v1.0.png](networking-overview_v1.0.png)
+![networking-overview_v1.1.png](networking-overview_v1.1.png)
 
 
 ## Monitoring and logging screenshots from grafana
