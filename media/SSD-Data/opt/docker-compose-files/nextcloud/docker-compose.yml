@@ -9,7 +9,7 @@ version: '3'
 services:
  
   db:
-    image: mariadb:10.3.22 # see image descriptions on docker hub -> https://hub.docker.com/_/mariadb
+    image: mariadb:10.5 # see image descriptions on docker hub -> https://hub.docker.com/_/mariadb
     command: --transaction-isolation=READ-COMMITTED --binlog-format=ROW
     restart: on-failure
     container_name: mariadb
